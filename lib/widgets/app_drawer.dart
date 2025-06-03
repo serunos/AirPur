@@ -31,15 +31,15 @@ class AppDrawer extends StatelessWidget {
               selected: selectedIndex == 0,
             ),
             DrawerItem(
-              icon: Icons.event,
-              label: 'Évènements',
+              icon: Icons.book,
+              label: 'Quizz',
               index: 1,
               onTap: onTap,
               selected: selectedIndex == 1,
             ),
             DrawerItem(
-              icon: Icons.book,
-              label: 'Quiz',
+              icon: Icons.bar_chart,
+              label: 'Statistique',
               index: 2,
               onTap: onTap,
               selected: selectedIndex == 2,
@@ -50,13 +50,6 @@ class AppDrawer extends StatelessWidget {
               index: 3,
               onTap: onTap,
               selected: selectedIndex == 3,
-            ),
-            DrawerItem(
-              icon: Icons.group,
-              label: 'Communauté',
-              index: 4,
-              onTap: onTap,
-              selected: selectedIndex == 4,
             ),
             Spacer(),
             // Tips & Tricks card

@@ -1,9 +1,12 @@
-import 'package:flutter/cupertino.dart';
+// lib/screens/home_screen.dart
+
 import 'package:flutter/material.dart';
 
 import '../widgets/app_drawer.dart';
+//import 'jeu_screen.dart';
+import 'quiz_screen.dart';
+//import 'statistique_screen.dart'; // Nouvel écran pour "Statistiques"
 import 'chatbot_screen.dart';
-import 'quiz_screen.dart'; // Ajout de l’import du QuizScreen
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -15,12 +18,29 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
+  // On ajoute "Statistiques" à la liste des pages
   static final List<Widget> _pages = <Widget>[
-    const Center(child: Text('Jeux', style: TextStyle(fontSize: 24))),
-    const Center(child: Text('Évènements', style: TextStyle(fontSize: 24))),
-    QuizScreen(), // Remplacement du placeholder par la page Quiz réelle
-    const ChatbotScreen(),
-    const Center(child: Text('Communauté', style: TextStyle(fontSize: 24))),
+    
+    //const JeuScreen(),      index 0
+    const Center(
+      child: Text(
+        'Placeholder - Jeu',
+        style: TextStyle(fontSize: 24),
+      ),
+    ),
+    
+    QuizScreen(), // index 1
+    
+    //const StatistiqueScreen(), index 2
+    const Center(
+      child: Text(
+        'Placeholder - Statistiques',
+        style: TextStyle(fontSize: 24),
+      ),
+    ),
+    
+    const ChatbotScreen(),        // index 3
+    
   ];
 
   void _onItemTapped(int index) {
@@ -34,9 +54,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Arrêter de fumer'),
+        title: const Text('AirPur'),
       ),
-      drawer: AppDrawer(onTap: _onItemTapped, selectedIndex: _selectedIndex),
+      drawer: AppDrawer(
+        onTap: _onItemTapped,
+        selectedIndex: _selectedIndex,
+        // Dans AppDrawer, assurez-vous d’afficher maintenant 4 items :
+        // 0 → "Jeu"
+        // 1 → "Quiz"
+        // 2 → "Statistiques"
+        // 3 → "Chatbot"
+      ),
       body: _pages[_selectedIndex],
     );
   }
