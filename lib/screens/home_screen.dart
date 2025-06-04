@@ -1,5 +1,6 @@
 // lib/screens/home_screen.dart
 
+import 'package:airpur/screens/statistique_screen.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/app_drawer.dart';
@@ -31,13 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     
     QuizScreen(), // index 1
     
-    //const StatistiqueScreen(), index 2
-    const Center(
-      child: Text(
-        'Placeholder - Statistiques',
-        style: TextStyle(fontSize: 24),
-      ),
-    ),
+    const StatistiqueScreen(), //index 2
     
     const ChatbotScreen(),        // index 3
     

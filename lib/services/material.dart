@@ -1,21 +1,8 @@
 ﻿// lib/services/material.dart
 
-/// Modèles et données pour l’ensemble des quizzes
 
-/// Modèle pour une question de quiz
-class Question {
-  final String id;
-  final String text;
-  final List<String> options;
-  final int correctIndex;
 
-  Question({
-    required this.id,
-    required this.text,
-    required this.options,
-    this.correctIndex = -1,
-  });
-}
+import '../models/quiz_models.dart';
 
 /// Modèle pour un badge délivré à l'utilisateur
 class Badge {
@@ -72,8 +59,10 @@ final QuizContent quiz1Content = QuizContent(
     ),
     Question(
       id: 'q2',
-      text: 'Combien de cigarettes fumez-vous par jour en moyenne ?',
-      options: ['< 5', '5–10', '10–20', '> 20'],
+      text: "Avant d’arrêter, combien de cigarettes fumiez-vous par jour ?",
+      type: QuestionType.numeric,
+      hint: "Entrez un nombre entier, ex : 15", 
+      options: [],
     ),
     Question(
       id: 'q3',

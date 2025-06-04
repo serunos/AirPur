@@ -1,5 +1,7 @@
 ﻿// lib/services/quiz_manager.dart
 
+import '../models/quiz_models.dart';
+import 'db_helper.dart';
 import 'material.dart';
 
 /// Classe principale qui gère dynamiquement plusieurs quizzes
@@ -10,6 +12,27 @@ class QuizManager {
     final content = allQuizzes[quizId];
     if (content == null) return [];
     return List.unmodifiable(content.questions);
+  }
+
+  Future<void> enregistrerReponses(List<QuizAnswer> reponses) async {
+    // On cherche dans `reponses` les IDs 100, 101 et 102
+
+    final answerCigsParJour = reponses.firstWhere(
+          (ans) => ans.questionId == 'q2',
+      orElse: () => QuizAnswer(questionId: 'q2', valeur: "0"),
+    ).valeur;
+
+    final cigsParJour = int.tryParse(answerCigsParJour) ?? 0;
+    final double prixPaquet = 13;
+    // On considère qu’un paquet contient 20 cigarettes par défaut. 
+    // On pourra paramétrer plus finement si besoin.
+
+    // Enregistrer dans la base locale
+    await DBHelper().insertHabitudeTabac(
+      cigsParJour: cigsParJour,
+      prixParPaquet: prixPaquet,
+      dateArret: DateTime.now()
+    );
   }
 
   /// Retourne un conseil court & concret au hasard pour le quiz [quizId].
