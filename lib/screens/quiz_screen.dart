@@ -1,11 +1,10 @@
 ﻿// lib/screens/quiz_screen.dart
 
 import 'package:flutter/material.dart' hide Badge;
-import 'package:airpur/services/material.dart';      // <— là où your QuizContent, Badge, etc. sont définis
-import 'package:airpur/services/quiz_manager.dart'; // <— là où getQuestions, getRandomTip, getBadges,etc.
-import 'package:intl/intl.dart'; // pour formatter la date si besoin
-
-import '../models/quiz_models.dart'; // <— contient Question, QuestionType, QuizAnswer
+import 'package:intl/intl.dart';
+import '../models/quiz_models.dart';
+import 'package:airpur/services/material.dart';
+import 'package:airpur/services/quiz_manager.dart';
 
 class QuizScreen extends StatefulWidget {
   final String quizId;
@@ -23,26 +22,69 @@ class _QuizScreenState extends State<QuizScreen> {
   late final String _quizId;
   late final String _title;
 
-  // ** Liste pour stocker les réponses de l’utilisateur **
-  late final List<QuizAnswer?> _answers;
+  // Liste des questions
+  late final List<Question> _questions;
 
-  // Pour le champ texte / numeric / decimal
+  // Réponses collectées pour chaque question (initialement à null)
+  late List<QuizAnswer?> _answers;
+
+  // Pour le champ texte / numérique / date
   final TextEditingController _textController = TextEditingController();
-
-  // Pour le type date, on stockera localement la date sélectionnée
   DateTime? _selectedDate;
+
+  // Indique si on a trouvé des réponses déjà sauvegardées
+  bool _alreadyCompleted = false;
 
   @override
   void initState() {
     super.initState();
     _quizId = widget.quizId;
     _title = widget.title;
-    final List<Question> questions = _quizManager.getQuestions(_quizId);
-    // On initialise la liste de réponses à la même longueur que les questions, 
-    // avec des valeurs null (remplies lorsqu’on valide)
-    _answers = List<QuizAnswer?>.filled(questions.length, null, growable: false);
 
+    // 1) Charge la liste de questions (synchrone)
+    _questions = _quizManager.getQuestions(_quizId);
+
+    // 2) Initialise la liste de réponses à la taille du quiz
+    _answers = List<QuizAnswer?>.filled(_questions.length, null, growable: false);
+
+    // 3) Créé le PageController (par défaut à la page 0)
     _pageController = PageController();
+
+    // 4) Lance la vérification asynchrone pour charger d’éventuelles réponses existantes
+    _loadSavedAnswers();
+  }
+
+  /// Charge et applique les réponses sauvegardées si elles existent.
+  Future<void> _loadSavedAnswers() async {
+    final bool hasSaved = await _quizManager.hasSavedAnswers(_quizId);
+
+    if (hasSaved) {
+      final List<QuizAnswer?> saved = await _quizManager.getSavedAnswers(_quizId);
+
+      // Si la longueur correspond exactement, on les utilise telles quelles
+      if (saved.length == _questions.length) {
+        _answers = List<QuizAnswer?>.from(saved);
+      } else {
+        // Sinon, on recale question par question
+        final temp = List<QuizAnswer?>.filled(_questions.length, null, growable: false);
+        for (int i = 0; i < saved.length && i < _questions.length; i++) {
+          temp[i] = saved[i];
+        }
+        _answers = temp;
+      }
+
+      // On marque qu’on doit afficher directement le récap
+      setState(() {
+        _alreadyCompleted = true;
+      });
+
+      // Après la frame en cours, on force le PageController à la page de récap
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(_questions.length);
+        }
+      });
+    }
   }
 
   @override
@@ -52,19 +94,19 @@ class _QuizScreenState extends State<QuizScreen> {
     super.dispose();
   }
 
+  /// Passe à la page suivante (et vide le TextController + la date sélectionnée).
   void _goToNextPage() {
     if (_pageController.hasClients) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-      // On vide le controller texte et la date chaque fois qu’on change de page
       _textController.clear();
       _selectedDate = null;
     }
   }
 
-  // Ouvre un date picker et stocke dans _selectedDate
+  /// Ouvre un sélecteur de date et stocke dans _selectedDate.
   Future<void> _pickDate(BuildContext context) async {
     final DateTime today = DateTime.now();
     final DateTime? picked = await showDatePicker(
@@ -82,8 +124,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Question> questions = _quizManager.getQuestions(_quizId);
-    final int totalPages = questions.length + 1; // +1 pour la page récapitulative
+    final int totalPages = _questions.length + 1; // +1 pour le récapitulatif
 
     return Scaffold(
       appBar: AppBar(title: Text(_title)),
@@ -92,15 +133,16 @@ class _QuizScreenState extends State<QuizScreen> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: totalPages,
         itemBuilder: (context, pageIndex) {
-          // Si on est sur une question (pas la page récapitulative)
-          if (pageIndex < questions.length) {
-            final Question currentQ = questions[pageIndex];
+          // --- MÉCANISME DE SAUT VERS LA PAGE RÉCAP ---
+          // Si on est dans la plage des questions (pageIndex < nombre de questions)
+          // ET que _alreadyCompleted est false → affichage d’une question.
+          // Sinon (pageIndex == nombreDeQuestions, ou _alreadyCompleted == true),
+          // on affiche le récap.
 
-            // On remet à zéro le TextEditingController si on revient “en arrière”
-            // (ici on suppose qu’on ne fait jamais de “retour en arrière”,
-            // mais si vous ajoutez un bouton précédent, pensez à clear le controller
-            // et ré-initialiser _selectedDate avec la valeur déjà entrée, si existante.)
+          if (pageIndex < _questions.length && !_alreadyCompleted) {
+            final Question currentQ = _questions[pageIndex];
 
+            // Rendu pour chaque type de question :
             return Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -108,18 +150,19 @@ class _QuizScreenState extends State<QuizScreen> {
                 children: [
                   // Affiche “Question X / N”
                   Text(
-                    'Question ${pageIndex + 1} / ${questions.length}',
+                    'Question ${pageIndex + 1} / ${_questions.length}',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 12),
-                  // Le texte de la question
+
+                  // Texte de la question
                   Text(
                     currentQ.text,
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 24),
 
-                  // ** SWITCH SUR LE TYPE DE LA QUESTION **
+                  // --- SWITCH SUR LE TYPE DE QUESTION ---
                   if (currentQ.type == QuestionType.choixUnique)
                   // === Choix Unique ===
                     ...currentQ.options.map((optionTexte) {
@@ -127,12 +170,18 @@ class _QuizScreenState extends State<QuizScreen> {
                         margin: const EdgeInsets.symmetric(vertical: 6),
                         child: ElevatedButton(
                           onPressed: () {
-                            // Stocke la réponse “optionTexte” dans _answers
+                            // Stocke la réponse
                             _answers[pageIndex] = QuizAnswer(
                               questionId: currentQ.id,
                               valeur: optionTexte,
                             );
-                            _goToNextPage();
+
+                            // Si c’est la DERNIÈRE question, on sauve tout avant d’avancer
+                            if (pageIndex == _questions.length - 1) {
+                              _saveAndGoToRecap();
+                            } else {
+                              _goToNextPage();
+                            }
                           },
                           child: Text(optionTexte),
                         ),
@@ -157,7 +206,6 @@ class _QuizScreenState extends State<QuizScreen> {
                           ElevatedButton(
                             onPressed: () {
                               final String answerText = _textController.text.trim();
-                              // Si l’utilisateur n’a rien saisi, on peut empêcher le passage
                               if (answerText.isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text('Veuillez saisir une réponse')),
@@ -168,7 +216,12 @@ class _QuizScreenState extends State<QuizScreen> {
                                 questionId: currentQ.id,
                                 valeur: answerText,
                               );
-                              _goToNextPage();
+
+                              if (pageIndex == _questions.length - 1) {
+                                _saveAndGoToRecap();
+                              } else {
+                                _goToNextPage();
+                              }
                             },
                             child: Text('Suivant'),
                           ),
@@ -204,12 +257,16 @@ class _QuizScreenState extends State<QuizScreen> {
                                   );
                                   return;
                                 }
-                                // Vous pouvez ajouter ici un parse pour vérifier que c’est vraiment un nombre
                                 _answers[pageIndex] = QuizAnswer(
                                   questionId: currentQ.id,
                                   valeur: answerNum,
                                 );
-                                _goToNextPage();
+
+                                if (pageIndex == _questions.length - 1) {
+                                  _saveAndGoToRecap();
+                                } else {
+                                  _goToNextPage();
+                                }
                               },
                               child: Text('Suivant'),
                             ),
@@ -246,7 +303,12 @@ class _QuizScreenState extends State<QuizScreen> {
                                     questionId: currentQ.id,
                                     valeur: DateFormat('yyyy-MM-dd').format(_selectedDate!),
                                   );
-                                  _goToNextPage();
+
+                                  if (pageIndex == _questions.length - 1) {
+                                    _saveAndGoToRecap();
+                                  } else {
+                                    _goToNextPage();
+                                  }
                                 },
                                 child: Text('Suivant'),
                               ),
@@ -255,15 +317,14 @@ class _QuizScreenState extends State<QuizScreen> {
                         )
 
                       else
-                      // === Autres types non gérés (sécuritaire) ===
+                      // === Autres types non gérés ===
                         Center(child: Text('Type de question non géré')),
                 ],
               ),
             );
           }
 
-          // *** PAGE RÉCAPITULATIVE (dernière page) ***
-          // pageIndex == questions.length
+          // --- PAGE RÉCAPITULATIF ---
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: SingleChildScrollView(
@@ -276,14 +337,14 @@ class _QuizScreenState extends State<QuizScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // On peut afficher ici les réponses collectées
+                  // Affiche les réponses
                   Text(
                     'Vos réponses :',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 12),
-                  ...List.generate(questions.length, (index) {
-                    final q = questions[index];
+                  ...List.generate(_questions.length, (index) {
+                    final q = _questions[index];
                     final ans = _answers[index];
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -296,7 +357,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
                   const SizedBox(height: 24),
                   Builder(builder: (_) {
-                    final String randomTip = _quizManager.getRandomTip(_quizId) ?? '';
+                    final String randomTip = _quizManager.getRandomTip(_quizId);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -314,9 +375,8 @@ class _QuizScreenState extends State<QuizScreen> {
                   }),
 
                   const SizedBox(height: 24),
-
                   Builder(builder: (_) {
-                    final List<Badge> badges = _quizManager.getBadges(_quizId) ?? [];
+                    final List<Badge> badges = _quizManager.getBadges(_quizId);
                     if (badges.isEmpty) return SizedBox.shrink();
 
                     return Column(
@@ -353,12 +413,10 @@ class _QuizScreenState extends State<QuizScreen> {
                   }),
 
                   const SizedBox(height: 32),
-
                   Center(
                     child: ElevatedButton(
                       onPressed: () {
-                        // Quand l'utilisateur clique sur “Terminer le quiz”,
-                        // on renvoie `true` pour signaler que le quiz est complété
+                        // Retourne à l’écran précédent (avec true)
                         Navigator.of(context).pop(true);
                       },
                       child: Text('Terminer le Quiz'),
@@ -370,6 +428,40 @@ class _QuizScreenState extends State<QuizScreen> {
           );
         },
       ),
+
+      // --- BOUTON "RECOMMENCER" QUAND LE QUIZ EST DÉJÀ COMPLÉTÉ ---
+      floatingActionButton: _alreadyCompleted
+          ? FloatingActionButton.extended(
+        icon: Icon(Icons.refresh),
+        label: Text('Recommencer'),
+        onPressed: () async {
+          // Efface les réponses sauvegardées puis réinitialise l’état
+          await _quizManager.clearSavedAnswers(_quizId);
+          setState(() {
+            _alreadyCompleted = false;
+            _answers = List<QuizAnswer?>.filled(_questions.length, null, growable: false);
+          });
+          _pageController.jumpToPage(0);
+        },
+      )
+          : null,
     );
+  }
+
+  /// Sauvegarde toutes les réponses puis va à la page récap.
+  Future<void> _saveAndGoToRecap() async {
+    // Filtre les réponses null (au cas où) : on ne sauve que les QuizAnswer non-null
+    final toSave = _answers.whereType<QuizAnswer>().toList();
+    await _quizManager.saveUserResponses(_quizId, toSave);
+
+    setState(() {
+      _alreadyCompleted = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(_questions.length);
+      }
+    });
   }
 }
