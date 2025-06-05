@@ -1,12 +1,12 @@
 ﻿// lib/screens/statistique_screen.dart
 
-import 'package:flutter/material.dart' hide Badge; // On cache Flutter's Badge
+import 'package:flutter/material.dart' hide Badge;
 import 'package:airpur/services/quiz_manager.dart';
 import 'package:intl/intl.dart';
 
 import '../models/quiz_models.dart';
 import '../services/db_helper.dart';
-import '../services/material.dart' as quizMat; // On importe notre modèle Badge sous alias
+import '../services/material.dart' as quizMat; // alias pour notre modèle Badge
 
 class StatistiqueScreen extends StatefulWidget {
   const StatistiqueScreen({Key? key}) : super(key: key);
@@ -16,26 +16,19 @@ class StatistiqueScreen extends StatefulWidget {
 }
 
 class _StatistiqueScreenState extends State<StatistiqueScreen> {
-  // Date d'arrêt (chargée depuis la BD ou forcée à aujourd'hui)
   DateTime? _dateArret;
-
-  // Nombre de cigarettes/jour récupéré depuis SharedPreferences (quiz)
   int _cigsParJour = 0;
-
-  // Prix du paquet (en dur)
   static const double _prixParPaquet = 13.0;
-
   int _joursSobres = 0;
   double _argentEconomise = 0.0;
 
-  // Liste des badges acquis (ou disponibles) pour le quiz tabac
+  // Liste qui contiendra les badges uniquement pour les quizzes terminés
   List<quizMat.Badge> _badges = [];
 
-  // QuizManager pour récupérer réponses & badges
   final QuizManager _quizManager = QuizManager();
 
-  // Identifiant du quiz tabac (adaptez à votre ID réel)
-  static const String _tabacQuizId = "quiz1";
+  // Les trois quiz IDs à tester
+  static const List<String> _quizIds = ['quiz1', 'quiz2', 'quiz3'];
 
   @override
   void initState() {
@@ -44,37 +37,45 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
   }
 
   Future<void> _chargerDonneesTabac() async {
-    // 1) Tenter de récupérer la date d'arrêt dans la BD
+    // 1) Charger la date d'arrêt depuis la BD (ou forcer aujourd'hui)
     final data = await DBHelper().getDerniereHabitudeTabac();
     if (data != null) {
       _dateArret = DateTime.parse(data['date_arret'] as String);
     } else {
-      // Si pas de donnée BD, on prend la date du jour comme date d'arrêt
       _dateArret = DateTime.now();
     }
 
-    // 2) Charger la réponse "cigarettes/jour" depuis SharedPreferences
-    final List<QuizAnswer?> savedAnswers =
-    await _quizManager.getSavedAnswers(_tabacQuizId);
-
+    // 2) Récupérer "cigarettes/jour" depuis SharedPreferences (premier quiz qui a q2)
     int cigsParJourFromQuiz = 0;
-    for (var ans in savedAnswers) {
-      if (ans != null && ans.questionId == 'q2') {
-        cigsParJourFromQuiz = int.tryParse(ans.valeur) ?? 0;
-        break;
+    for (String quizId in _quizIds) {
+      final savedAnswers = await _quizManager.getSavedAnswers(quizId);
+      for (var ans in savedAnswers) {
+        if (ans != null && ans.questionId == 'q2') {
+          cigsParJourFromQuiz = int.tryParse(ans.valeur) ?? 0;
+          break;
+        }
       }
+      if (cigsParJourFromQuiz > 0) break;
     }
     _cigsParJour = cigsParJourFromQuiz;
 
-    // 3) Calculer jours de sobriété & économies
+    // 3) Calculer sobriété & économies
     _calculerSobrieteEtEconomies();
 
-    // 4) Récupérer la liste des badges pour ce quiz
-    _badges = _quizManager.getBadges(_tabacQuizId)
-        .whereType<quizMat.Badge>()
-        .toList();
+    // 4) Pour chaque quiz ID, ajouter ses badges si le quiz est terminé
+    List<quizMat.Badge> tousLesBadges = [];
+    for (String quizId in _quizIds) {
+      final bool termine = await _quizManager.hasSavedAnswers(quizId);
+      if (termine) {
+        final badgesPourQuiz = _quizManager
+            .getBadges(quizId)
+            .whereType<quizMat.Badge>()
+            .toList();
+        tousLesBadges.addAll(badgesPourQuiz);
+      }
+    }
+    _badges = tousLesBadges;
 
-    // Enfin, notifier le framework que tout a changé
     setState(() {});
   }
 
@@ -84,7 +85,6 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       _argentEconomise = 0.0;
       return;
     }
-
     final now = DateTime.now();
     final difference = now.difference(_dateArret!);
     final jours = difference.inDays.clamp(0, difference.inDays);
@@ -97,18 +97,17 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
   }
 
   Future<void> _resetDonneesTabac() async {
-    // 1) Supprimer de la BD
     await DBHelper().deleteHabitudeTabac();
-
-    // 2) Remettre la date d'arrêt à aujourd'hui
     _dateArret = DateTime.now();
     _cigsParJour = 0;
     _calculerSobrieteEtEconomies();
 
-    // 3) Effacer les réponses du quiz dans SharedPreferences
-    await _quizManager.clearSavedAnswers(_tabacQuizId);
+    // Effacer les réponses pour chacun des trois quiz
+    for (String quizId in _quizIds) {
+      await _quizManager.clearSavedAnswers(quizId);
+    }
 
-    // 4) Réinitialiser la liste des badges (ici, on vide complètement)
+    // Vider la liste des badges
     _badges = [];
 
     setState(() {});
@@ -122,20 +121,20 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       appBar: AppBar(
         title: const Text('Statistiques'),
       ),
-      body: Padding(
+      body: aucuneDonnee
+          ? const Center(
+        child: Text(
+          'Aucune donnée de tabac disponible.\nVeuillez remplir au moins un quiz.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18),
+        ),
+      )
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
-        child: aucuneDonnee
-            ? const Center(
-          child: Text(
-            'Aucune donnée de tabac disponible.\nVeuillez remplir le quiz.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18),
-          ),
-        )
-            : Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Affichage des statistiques ---
+            // --- Statistiques ---
             Text(
               'Date d’arrêt : '
                   '${_dateArret!.day.toString().padLeft(2, '0')}/'
@@ -164,9 +163,9 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Argent économisé',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -182,49 +181,47 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
             ),
             const SizedBox(height: 24),
 
-            // --- Section : Afficher les badges obtenus ---
+            // --- Section "Vos badges" (uniquement pour les quizzes terminés) ---
             if (_badges.isNotEmpty) ...[
-              Text(
+              const Text(
                 'Vos badges',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: _badges.map((quizBadge) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // On affiche l'image du badge
-                      Image.asset(
-                        quizBadge.assetPath,
-                        width: 60,
-                        height: 60,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        quizBadge.title,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  );
-                }).toList(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: _badges.map((quizBadge) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          quizBadge.assetPath,
+                          width: 60,
+                          height: 60,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          quizBadge.title,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
               ),
               const SizedBox(height: 24),
             ],
 
-            const Spacer(),
-
-            // Boutons en bas de l'écran
+            // --- Boutons ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [              
-
-                // Remise à zéro
+              children: [
                 ElevatedButton.icon(
                   onPressed: () async {
                     final confirm = await showDialog<bool>(
@@ -232,8 +229,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                       builder: (ctx) => AlertDialog(
                         title: const Text('Remise à zéro'),
                         content: const Text(
-                          'Voulez-vous vraiment réinitialiser '
-                              'vos données ? La date d’arrêt sera mise à aujourd’hui.',
+                          'Voulez-vous vraiment réinitialiser vos données ? '
+                              'La date d’arrêt sera mise à aujourd’hui.',
                         ),
                         actions: [
                           TextButton(
