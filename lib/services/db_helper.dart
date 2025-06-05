@@ -70,4 +70,15 @@ class DBHelper {
     }
     return null;
   }
+
+  Future<void> deleteHabitudeTabac() async {
+    final db = await database;
+    await db.delete(
+      'habitudes_tabac',
+      // Si vous ne conservez qu’un seul enregistrement, vous pouvez
+      // tout simplement faire un DELETE sans WHERE :
+      // where: null, whereArgs: null
+    );
+  }
+  
 }

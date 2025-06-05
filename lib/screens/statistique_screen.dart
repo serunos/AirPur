@@ -44,15 +44,32 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       });
       return;
     }
+
     final now = DateTime.now();
     final difference = now.difference(_dateArret!);
     final jours = difference.inDays;
+
     // Montant économisé (en supposant 20 cigs/paquet)
     final prixParCigarette = _prixParPaquet / 20.0;
     final montant = jours * _cigsParJour * prixParCigarette;
+
     setState(() {
       _joursSobres = jours;
       _argentEconomise = montant;
+    });
+  }
+
+  Future<void> _resetDonneesTabac() async {
+    // 1. Supprimer de la base
+    await DBHelper().deleteHabitudeTabac();
+
+    // 2. Réinitialiser : date d’arrêt = aujourd’hui, autres valeurs à zéro
+    setState(() {
+      _dateArret = DateTime.now();
+      _cigsParJour = 0;
+      _prixParPaquet = 0.0;
+      // Recalculer sobriété & économies : ce sera 0 jour et 0 €
+      _calculerSobrieteEtEconomies();
     });
   }
 
@@ -119,13 +136,50 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
               ),
             ),
             const Spacer(),
-            // Vous pouvez ajouter un bouton pour remettre à zéro, ou refaire le quiz
+
+            // Bouton pour mettre à jour/en refaire le quiz
             ElevatedButton(
               onPressed: () {
-                // Possibilité : renvoyer au quiz ou réinitialiser la date d'arrêt
-                // Navigator.of(context).pushNamed('/quiz');
+                Navigator.of(context).pushNamed('/quiz');
               },
               child: const Text('Mettre à jour mes habitudes'),
+            ),
+
+            const SizedBox(height: 12),
+
+            // Nouveau bouton pour remise à zéro
+            ElevatedButton.icon(
+              onPressed: () async {
+                // Confirmation avant remise à zéro
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Remise à zéro'),
+                    content: const Text(
+                        'Voulez-vous vraiment réinitialiser vos données ? '
+                            'La date d’arrêt sera mise à aujourd’hui.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Annuler'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Oui, remettre à zéro'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  await _resetDonneesTabac();
+                }
+              },
+              icon: const Icon(Icons.restore),
+              label: const Text('Remise à zéro'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
             ),
           ],
         ),
