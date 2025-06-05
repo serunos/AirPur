@@ -44,6 +44,12 @@ class QuizManager {
     return content.tips.first;
   }
 
+  List<Badge>? getBadges(String quizId) {
+    final content = allQuizzes[quizId];
+    if (content == null) return <Badge>[];
+    return content.badges;
+  }
+
   /// Recherche une infographie par [infographicId] au sein du quiz [quizId].
   /// Retourne null si le quiz ou l’infographie n’existent pas.
   Infographic? getInfographicById(String quizId, String infographicId) {
@@ -57,6 +63,10 @@ class QuizManager {
     }
   }
 
+  List<String> getAllQuizIds() {
+    return List.unmodifiable(allQuizzes.keys);
+  }
+  
   /// Retourne le défi du jour pour le quiz [quizId].
   /// Si [index] est fourni et valide, renvoie ce défi précis.
   /// Sinon, renvoie un défi aléatoire. Si l’ID est invalide, retourne une chaîne vide.

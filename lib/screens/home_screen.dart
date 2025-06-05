@@ -1,5 +1,6 @@
 // lib/screens/home_screen.dart
 
+import 'package:airpur/screens/quiz_selection_screen.dart';
 import 'package:airpur/screens/statistique_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -30,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ),
     
-    QuizScreen(), // index 1
+    QuizSelectionScreen(), // index 1
     
     const StatistiqueScreen(), //index 2
     

@@ -54,6 +54,7 @@ final QuizContent quiz1Content = QuizContent(
   questions: [
     Question(
       id: 'q1',
+      type: QuestionType.choixUnique,
       text: 'Depuis combien de temps fumez-vous ?',
       options: ['< 1 an', '1–5 ans', '5–10 ans', '> 10 ans'],
     ),
@@ -66,6 +67,7 @@ final QuizContent quiz1Content = QuizContent(
     ),
     Question(
       id: 'q3',
+      type: QuestionType.choixUnique,
       text: 'Avez-vous déjà essayé d\'arrêter ?',
       options: ['Oui, plusieurs fois', 'Oui, une fois', 'Non'],
     ),
@@ -101,18 +103,6 @@ final QuizContent quiz1Content = QuizContent(
       description: 'Vous avez complété le Quizz de profiling.',
       assetPath: 'assets/badges/first_step.png',
     ),
-    Badge(
-      id: 'b2',
-      title: '1 Jour Sans Cigarette',
-      description: 'Vous avez tenu 24 heures sans fumer.',
-      assetPath: 'assets/badges/one_day.png',
-    ),
-    Badge(
-      id: 'b3',
-      title: 'Défi Relevé',
-      description: 'Vous avez rempli votre défi du jour.',
-      assetPath: 'assets/badges/daily_challenge.png',
-    ),
   ],
 );
 
@@ -121,21 +111,25 @@ final QuizContent quiz2Content = QuizContent(
   questions: [
     Question(
       id: 'q21',
+      type: QuestionType.choixUnique,
       text: 'Quand ressentez-vous le besoin de fumer le plus souvent ?',
       options: ['Au réveil', 'Après les repas', 'En faisant une pause au travail', 'Lors d’un moment de stress'],
     ),
     Question(
       id: 'q22',
+      type: QuestionType.choixUnique,
       text: 'Quelle est votre principale motivation pour allumer une cigarette ?',
       options: ['Pour me détendre', 'Pour socialiser', 'Par habitude', 'Pour gérer mon stress'],
     ),
     Question(
       id: 'q23',
+      type: QuestionType.choixUnique,
       text: 'Combien de temps après votre réveil fumez-vous votre première cigarette ?',
       options: ['Dans l’heure qui suit', 'Plus de 2 heures après', 'Juste avant de me lever', 'Je n’ai pas d’horaire fixe'],
     ),
     Question(
       id: 'q24',
+      type: QuestionType.choixUnique,
       text: 'À quel point vous sentez-vous dépendant de la cigarette ?',
       options: ['Très dépendant', 'Assez dépendant', 'Un peu dépendant', 'Pas du tout dépendant'],
     ),
@@ -168,21 +162,25 @@ final QuizContent quiz3Content = QuizContent(
   questions: [
     Question(
       id: 'q31',
+      type: QuestionType.choixUnique,
       text: 'Qu’est-ce qui vous motive le plus à arrêter de fumer ?',
       options: ['Améliorer ma santé', 'Économiser de l’argent', 'Protéger ma famille', 'Améliorer mon apparence'],
     ),
     Question(
       id: 'q32',
+      type: QuestionType.choixUnique,
       text: 'Quel bénéfice attendez-vous en priorité si vous arrêtez ?',
       options: ['Meilleur souffle', 'Moindre fatigue', 'Peau plus nette', 'Plus grande endurance'],
     ),
     Question(
       id: 'q33',
+      type: QuestionType.choixUnique,
       text: 'À quel point l’économie financière est-elle importante pour vous ?',
       options: ['Primordiale', 'Assez importante', 'Un peu importante', 'Pas importante'],
     ),
     Question(
       id: 'q34',
+      type: QuestionType.choixUnique,
       text: 'Quel frein pensez-vous avoir pour tenir sans fumer ?',
       options: ['Manque de motivation', 'Stress émotionnel', 'Crainte de reprendre du poids', 'Pression sociale'],
     ),

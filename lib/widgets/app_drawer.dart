@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/quiz_selection_screen.dart';
 import 'drawer_item.dart';
 
 class AppDrawer extends StatelessWidget {
@@ -30,12 +31,16 @@ class AppDrawer extends StatelessWidget {
               onTap: onTap,
               selected: selectedIndex == 0,
             ),
-            DrawerItem(
-              icon: Icons.book,
-              label: 'Quizz',
-              index: 1,
-              onTap: onTap,
+            ListTile(
+              leading: Icon(Icons.quiz),
+              title: Text('Mes Quizzes'),
               selected: selectedIndex == 1,
+              onTap: () {
+                Navigator.of(context).pop(); // ferme le drawer
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => QuizSelectionScreen()),
+                );
+              },
             ),
             DrawerItem(
               icon: Icons.bar_chart,

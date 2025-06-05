@@ -1,12 +1,18 @@
 ﻿// lib/screens/quiz_screen.dart
 
 import 'package:flutter/material.dart' hide Badge;
-import 'package:airpur/services/material.dart';
-import 'package:airpur/services/quiz_manager.dart';
+import 'package:airpur/services/material.dart';      // <— là où your QuizContent, Badge, etc. sont définis
+import 'package:airpur/services/quiz_manager.dart'; // <— là où getQuestions, getRandomTip, getBadges,etc.
+import 'package:intl/intl.dart'; // pour formatter la date si besoin
 
-import '../models/quiz_models.dart';
+import '../models/quiz_models.dart'; // <— contient Question, QuestionType, QuizAnswer
 
 class QuizScreen extends StatefulWidget {
+  final String quizId;
+  final String title;
+
+  QuizScreen({required this.quizId, required this.title});
+
   @override
   _QuizScreenState createState() => _QuizScreenState();
 }
@@ -14,36 +20,35 @@ class QuizScreen extends StatefulWidget {
 class _QuizScreenState extends State<QuizScreen> {
   final QuizManager _quizManager = QuizManager();
   late final PageController _pageController;
-  final String _quizId = 'quiz1';
+  late final String _quizId;
+  late final String _title;
 
-  /// Liste qui stockera toutes les réponses sous forme de QuizAnswer(questionId, valeur)
-  final List<QuizAnswer> _answers = [];
+  // ** Liste pour stocker les réponses de l’utilisateur **
+  late final List<QuizAnswer?> _answers;
 
-  /// Un TextEditingController par question à saisie libre (numeric, decimal ou date).
-  final Map<String, TextEditingController> _controllers = {};
+  // Pour le champ texte / numeric / decimal
+  final TextEditingController _textController = TextEditingController();
+
+  // Pour le type date, on stockera localement la date sélectionnée
+  DateTime? _selectedDate;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    _quizId = widget.quizId;
+    _title = widget.title;
+    final List<Question> questions = _quizManager.getQuestions(_quizId);
+    // On initialise la liste de réponses à la même longueur que les questions, 
+    // avec des valeurs null (remplies lorsqu’on valide)
+    _answers = List<QuizAnswer?>.filled(questions.length, null, growable: false);
 
-    // On initialise un TextEditingController pour chaque question à saisie libre
-    final questions = _quizManager.getQuestions(_quizId);
-    for (var q in questions) {
-      if (q.type == QuestionType.numeric ||
-          q.type == QuestionType.decimal ||
-          q.type == QuestionType.date) {
-        _controllers[q.id] = TextEditingController();
-      }
-    }
+    _pageController = PageController();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    for (var ctrl in _controllers.values) {
-      ctrl.dispose();
-    }
+    _textController.dispose();
     super.dispose();
   }
 
@@ -53,180 +58,256 @@ class _QuizScreenState extends State<QuizScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+      // On vide le controller texte et la date chaque fois qu’on change de page
+      _textController.clear();
+      _selectedDate = null;
     }
   }
 
-  /// Met à jour (ou ajoute) une réponse à la liste _answers
-  void _storeAnswer(String questionId, String valeur) {
-    final existingIndex =
-    _answers.indexWhere((ans) => ans.questionId == questionId);
-    if (existingIndex >= 0) {
-      _answers[existingIndex] = QuizAnswer(
-        questionId: questionId,
-        valeur: valeur,
-      );
-    } else {
-      _answers.add(QuizAnswer(
-        questionId: questionId,
-        valeur: valeur,
-      ));
+  // Ouvre un date picker et stocke dans _selectedDate
+  Future<void> _pickDate(BuildContext context) async {
+    final DateTime today = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: today,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(today.year + 1),
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final List<Question> questions = _quizManager.getQuestions(_quizId);
-    final int totalPages = questions.length + 1; // +1 pour la page récap
+    final int totalPages = questions.length + 1; // +1 pour la page récapitulative
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Quiz Profilage')),
+      appBar: AppBar(title: Text(_title)),
       body: PageView.builder(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: totalPages,
         itemBuilder: (context, pageIndex) {
-          // Si on est sur une question...
+          // Si on est sur une question (pas la page récapitulative)
           if (pageIndex < questions.length) {
             final Question currentQ = questions[pageIndex];
+
+            // On remet à zéro le TextEditingController si on revient “en arrière”
+            // (ici on suppose qu’on ne fait jamais de “retour en arrière”,
+            // mais si vous ajoutez un bouton précédent, pensez à clear le controller
+            // et ré-initialiser _selectedDate avec la valeur déjà entrée, si existante.)
 
             return Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Affiche “Question X / N”
                   Text(
                     'Question ${pageIndex + 1} / ${questions.length}',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 12),
+                  // Le texte de la question
                   Text(
                     currentQ.text,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 24),
 
-                  // Si la question a des options (choix unique) :
-                  if (currentQ.options.isNotEmpty) ...[
-                    ...List.generate(
-                      currentQ.options.length,
-                          (index) => Container(
+                  // ** SWITCH SUR LE TYPE DE LA QUESTION **
+                  if (currentQ.type == QuestionType.choixUnique)
+                  // === Choix Unique ===
+                    ...currentQ.options.map((optionTexte) {
+                      return Container(
                         margin: const EdgeInsets.symmetric(vertical: 6),
                         child: ElevatedButton(
                           onPressed: () {
-                            // On stocke la réponse choisie (l’étiquette du bouton)
-                            _storeAnswer(
-                              currentQ.id,
-                              currentQ.options[index],
+                            // Stocke la réponse “optionTexte” dans _answers
+                            _answers[pageIndex] = QuizAnswer(
+                              questionId: currentQ.id,
+                              valeur: optionTexte,
                             );
                             _goToNextPage();
                           },
-                          child: Text(currentQ.options[index]),
+                          child: Text(optionTexte),
                         ),
-                      ),
-                    ),
-                  ] else ...[
-                    // Sinon, c’est une question à saisie libre : numeric, decimal ou date
-                    if (currentQ.type == QuestionType.numeric ||
-                        currentQ.type == QuestionType.decimal) ...[
-                      TextFormField(
-                        controller: _controllers[currentQ.id],
-                        keyboardType: TextInputType.numberWithOptions(
-                          decimal: currentQ.type == QuestionType.decimal,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: currentQ.text,
-                          hintText: currentQ.hint,
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (val) {
-                          _storeAnswer(currentQ.id, val);
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Optionnel : valider que le champ n’est pas vide
-                          _goToNextPage();
-                        },
-                        child: const Text('Suivant'),
-                      ),
-                    ] else if (currentQ.type == QuestionType.date) ...[
-                      TextFormField(
-                        controller: _controllers[currentQ.id],
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: currentQ.text,
-                          hintText: currentQ.hint ?? 'JJ/MM/AAAA',
-                          border: const OutlineInputBorder(),
-                          suffixIcon: const Icon(Icons.calendar_today),
-                        ),
-                        onTap: () async {
-                          DateTime now = DateTime.now();
-                          final DateTime? picked = await showDatePicker(
-                            context: context,
-                            initialDate: now,
-                            firstDate: DateTime(1900),
-                            lastDate: now,
-                            locale: const Locale('fr', 'FR'),
-                          );
-                          if (picked != null) {
-                            final formatted =
-                                '${picked.day.toString().padLeft(2, '0')}/'
-                                '${picked.month.toString().padLeft(2, '0')}/'
-                                '${picked.year}';
-                            _controllers[currentQ.id]!.text = formatted;
-                            _storeAnswer(currentQ.id, formatted);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          _goToNextPage();
-                        },
-                        child: const Text('Suivant'),
-                      ),
-                    ],
-                  ],
+                      );
+                    }).toList()
 
-                  const Spacer(),
+                  else if (currentQ.type == QuestionType.texte)
+                  // === Champ Texte ===
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: _textController,
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(),
+                              hintText: currentQ.hint ?? 'Votre réponse',
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton(
+                            onPressed: () {
+                              final String answerText = _textController.text.trim();
+                              // Si l’utilisateur n’a rien saisi, on peut empêcher le passage
+                              if (answerText.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Veuillez saisir une réponse')),
+                                );
+                                return;
+                              }
+                              _answers[pageIndex] = QuizAnswer(
+                                questionId: currentQ.id,
+                                valeur: answerText,
+                              );
+                              _goToNextPage();
+                            },
+                            child: Text('Suivant'),
+                          ),
+                        ],
+                      ),
+                    )
+
+                  else if (currentQ.type == QuestionType.numeric ||
+                        currentQ.type == QuestionType.decimal)
+                    // === Champ Numérique / Décimal ===
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextField(
+                              controller: _textController,
+                              maxLines: 1,
+                              keyboardType: TextInputType.numberWithOptions(
+                                decimal: (currentQ.type == QuestionType.decimal),
+                              ),
+                              decoration: InputDecoration(
+                                border: OutlineInputBorder(),
+                                hintText: currentQ.hint ?? 'Entrez un nombre',
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            ElevatedButton(
+                              onPressed: () {
+                                final String answerNum = _textController.text.trim();
+                                if (answerNum.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Veuillez saisir un nombre')),
+                                  );
+                                  return;
+                                }
+                                // Vous pouvez ajouter ici un parse pour vérifier que c’est vraiment un nombre
+                                _answers[pageIndex] = QuizAnswer(
+                                  questionId: currentQ.id,
+                                  valeur: answerNum,
+                                );
+                                _goToNextPage();
+                              },
+                              child: Text('Suivant'),
+                            ),
+                          ],
+                        ),
+                      )
+
+                    else if (currentQ.type == QuestionType.date)
+                      // === Sélecteur de Date ===
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              OutlinedButton(
+                                onPressed: () async {
+                                  await _pickDate(context);
+                                },
+                                child: Text(
+                                  _selectedDate == null
+                                      ? (currentQ.hint ?? 'Sélectionnez une date')
+                                      : DateFormat.yMMMMd().format(_selectedDate!),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              ElevatedButton(
+                                onPressed: () {
+                                  if (_selectedDate == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Veuillez sélectionner une date')),
+                                    );
+                                    return;
+                                  }
+                                  _answers[pageIndex] = QuizAnswer(
+                                    questionId: currentQ.id,
+                                    valeur: DateFormat('yyyy-MM-dd').format(_selectedDate!),
+                                  );
+                                  _goToNextPage();
+                                },
+                                child: Text('Suivant'),
+                              ),
+                            ],
+                          ),
+                        )
+
+                      else
+                      // === Autres types non gérés (sécuritaire) ===
+                        Center(child: Text('Type de question non géré')),
                 ],
               ),
             );
           }
 
-          // … sinon, page récapitulative du Quiz 1 …
+          // *** PAGE RÉCAPITULATIVE (dernière page) ***
+          // pageIndex == questions.length
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Récapitulatif Quiz Profilage',
-                    style:
-                    TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  Text(
+                    'Récapitulatif : $_title',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 24),
 
+                  // On peut afficher ici les réponses collectées
+                  Text(
+                    'Vos réponses :',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 12),
+                  ...List.generate(questions.length, (index) {
+                    final q = questions[index];
+                    final ans = _answers[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        '- ${q.text}\n   Réponse : ${ans?.valeur ?? "Aucune"}',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    );
+                  }),
+
+                  const SizedBox(height: 24),
                   Builder(builder: (_) {
-                    final String randomTip =
-                    _quizManager.getRandomTip(_quizId);
+                    final String randomTip = _quizManager.getRandomTip(_quizId) ?? '';
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Conseil à retenir :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           randomTip,
-                          style: const TextStyle(
-                              fontSize: 16, fontStyle: FontStyle.italic),
+                          style: TextStyle(fontSize: 16),
                         ),
                       ],
                     );
@@ -235,71 +316,37 @@ class _QuizScreenState extends State<QuizScreen> {
                   const SizedBox(height: 24),
 
                   Builder(builder: (_) {
-                    final Infographic? info =
-                    _quizManager.getInfographicById(_quizId, 'i1');
-                    if (info == null) return const SizedBox.shrink();
+                    final List<Badge> badges = _quizManager.getBadges(_quizId) ?? [];
+                    if (badges.isEmpty) return SizedBox.shrink();
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Infographie : ${info.title}',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
+                          'Vos badges :',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                         ),
-                        const SizedBox(height: 8),
-                        Image.asset(info.assetPath),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final String dailyChallenge =
-                    _quizManager.getDailyChallenge(_quizId);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Défi du jour :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          dailyChallenge,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final Badge? badge =
-                    _quizManager.awardBadge(_quizId, 'b1');
-                    if (badge == null) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Félicitations, vous débloquez le badge :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Image.asset(badge.assetPath, height: 48),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Text(
-                                badge.title,
-                                style: const TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: badges.map((b) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Image.asset(
+                                  b.assetPath,
+                                  width: 50,
+                                  height: 50,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  b.title,
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ],
+                            );
+                          }).toList(),
                         ),
                       ],
                     );
@@ -307,625 +354,16 @@ class _QuizScreenState extends State<QuizScreen> {
 
                   const SizedBox(height: 32),
 
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => Quiz2Screen()),
-                      );
-                    },
-                    child: const Text('Passer au Quiz 2'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ==================== Quiz 2 ====================
-
-class Quiz2Screen extends StatefulWidget {
-  @override
-  _Quiz2ScreenState createState() => _Quiz2ScreenState();
-}
-
-class _Quiz2ScreenState extends State<Quiz2Screen> {
-  final QuizManager _quizManager = QuizManager();
-  late final PageController _pageController;
-  final String _quizId = 'quiz2';
-
-  final List<QuizAnswer> _answers = [];
-  final Map<String, TextEditingController> _controllers = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-
-    final questions = _quizManager.getQuestions(_quizId);
-    for (var q in questions) {
-      if (q.type == QuestionType.numeric ||
-          q.type == QuestionType.decimal ||
-          q.type == QuestionType.date) {
-        _controllers[q.id] = TextEditingController();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    for (var ctrl in _controllers.values) {
-      ctrl.dispose();
-    }
-    super.dispose();
-  }
-
-  void _storeAnswer(String questionId, String valeur) {
-    final existingIndex =
-    _answers.indexWhere((ans) => ans.questionId == questionId);
-    if (existingIndex >= 0) {
-      _answers[existingIndex] = QuizAnswer(
-        questionId: questionId,
-        valeur: valeur,
-      );
-    } else {
-      _answers.add(QuizAnswer(
-        questionId: questionId,
-        valeur: valeur,
-      ));
-    }
-  }
-
-  void _goToNextPage() {
-    if (_pageController.hasClients) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Question> questions = _quizManager.getQuestions(_quizId);
-    final int totalPages = questions.length + 1;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Quiz 2 - Quel fumeur es-tu ?')),
-      body: PageView.builder(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: totalPages,
-        itemBuilder: (context, pageIndex) {
-          if (pageIndex < questions.length) {
-            final Question currentQ = questions[pageIndex];
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Question ${pageIndex + 1} / ${questions.length}',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    currentQ.text,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-
-                  if (currentQ.options.isNotEmpty) ...[
-                    ...List.generate(
-                      currentQ.options.length,
-                          (index) => Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        child: ElevatedButton(
-                          onPressed: () {
-                            _storeAnswer(
-                              currentQ.id,
-                              currentQ.options[index],
-                            );
-                            _goToNextPage();
-                          },
-                          child: Text(currentQ.options[index]),
-                        ),
-                      ),
+                  Center(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        // Quand l'utilisateur clique sur “Terminer le quiz”,
+                        // on renvoie `true` pour signaler que le quiz est complété
+                        Navigator.of(context).pop(true);
+                      },
+                      child: Text('Terminer le Quiz'),
                     ),
-                  ] else ...[
-                    if (currentQ.type == QuestionType.numeric ||
-                        currentQ.type == QuestionType.decimal) ...[
-                      TextFormField(
-                        controller: _controllers[currentQ.id],
-                        keyboardType: TextInputType.numberWithOptions(
-                          decimal: currentQ.type == QuestionType.decimal,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: currentQ.text,
-                          hintText: currentQ.hint,
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (val) {
-                          _storeAnswer(currentQ.id, val);
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          _goToNextPage();
-                        },
-                        child: const Text('Suivant'),
-                      ),
-                    ] else if (currentQ.type == QuestionType.date) ...[
-                      TextFormField(
-                        controller: _controllers[currentQ.id],
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: currentQ.text,
-                          hintText: currentQ.hint ?? 'JJ/MM/AAAA',
-                          border: const OutlineInputBorder(),
-                          suffixIcon: const Icon(Icons.calendar_today),
-                        ),
-                        onTap: () async {
-                          DateTime now = DateTime.now();
-                          final DateTime? picked = await showDatePicker(
-                            context: context,
-                            initialDate: now,
-                            firstDate: DateTime(1900),
-                            lastDate: now,
-                            locale: const Locale('fr', 'FR'),
-                          );
-                          if (picked != null) {
-                            final formatted =
-                                '${picked.day.toString().padLeft(2, '0')}/'
-                                '${picked.month.toString().padLeft(2, '0')}/'
-                                '${picked.year}';
-                            _controllers[currentQ.id]!.text = formatted;
-                            _storeAnswer(currentQ.id, formatted);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          _goToNextPage();
-                        },
-                        child: const Text('Suivant'),
-                      ),
-                    ],
-                  ],
-
-                  const Spacer(),
-                ],
-              ),
-            );
-          }
-
-          // Récapitulatif Quiz 2
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Récapitulatif Quiz 2',
-                    style:
-                    TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final String randomTip =
-                    _quizManager.getRandomTip(_quizId);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Conseil :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          randomTip,
-                          style: const TextStyle(
-                              fontSize: 16, fontStyle: FontStyle.italic),
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final Infographic? info =
-                    _quizManager.getInfographicById(_quizId, 'i21');
-                    if (info == null) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Infographie : ${info.title}',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Image.asset(info.assetPath),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final String dailyChallenge =
-                    _quizManager.getDailyChallenge(_quizId);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Défi "1er souffle" :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          dailyChallenge,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final Badge? badge =
-                    _quizManager.awardBadge(_quizId, 'b21');
-                    if (badge == null) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Nouveau badge :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Image.asset(badge.assetPath, height: 48),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Text(
-                                badge.title,
-                                style: const TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 32),
-
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => Quiz3Screen()),
-                      );
-                    },
-                    child: const Text('Passer au Quiz 3'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ==================== Quiz 3 ====================
-
-class Quiz3Screen extends StatefulWidget {
-  @override
-  _Quiz3ScreenState createState() => _Quiz3ScreenState();
-}
-
-class _Quiz3ScreenState extends State<Quiz3Screen> {
-  final QuizManager _quizManager = QuizManager();
-  late final PageController _pageController;
-  final String _quizId = 'quiz3';
-
-  final List<QuizAnswer> _answers = [];
-  final Map<String, TextEditingController> _controllers = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-
-    final questions = _quizManager.getQuestions(_quizId);
-    for (var q in questions) {
-      if (q.type == QuestionType.numeric ||
-          q.type == QuestionType.decimal ||
-          q.type == QuestionType.date) {
-        _controllers[q.id] = TextEditingController();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    for (var ctrl in _controllers.values) {
-      ctrl.dispose();
-    }
-    super.dispose();
-  }
-
-  void _storeAnswer(String questionId, String valeur) {
-    final existingIndex =
-    _answers.indexWhere((ans) => ans.questionId == questionId);
-    if (existingIndex >= 0) {
-      _answers[existingIndex] = QuizAnswer(
-        questionId: questionId,
-        valeur: valeur,
-      );
-    } else {
-      _answers.add(QuizAnswer(
-        questionId: questionId,
-        valeur: valeur,
-      ));
-    }
-  }
-
-  void _goToNextPage() {
-    if (_pageController.hasClients) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Question> questions = _quizManager.getQuestions(_quizId);
-    final int totalPages = questions.length + 1;
-
-    return Scaffold(
-      appBar:
-      AppBar(title: const Text('Quiz 3 - Qu\'est-ce qui te motive ?')),
-      body: PageView.builder(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: totalPages,
-        itemBuilder: (context, pageIndex) {
-          if (pageIndex < questions.length) {
-            final Question currentQ = questions[pageIndex];
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Question ${pageIndex + 1} / ${questions.length}',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    currentQ.text,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-
-                  if (currentQ.options.isNotEmpty) ...[
-                    ...List.generate(
-                      currentQ.options.length,
-                          (index) => Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        child: ElevatedButton(
-                          onPressed: () {
-                            _storeAnswer(
-                              currentQ.id,
-                              currentQ.options[index],
-                            );
-                            _goToNextPage();
-                          },
-                          child: Text(currentQ.options[index]),
-                        ),
-                      ),
-                    ),
-                  ] else ...[
-                    if (currentQ.type == QuestionType.numeric ||
-                        currentQ.type == QuestionType.decimal) ...[
-                      TextFormField(
-                        controller: _controllers[currentQ.id],
-                        keyboardType: TextInputType.numberWithOptions(
-                          decimal: currentQ.type == QuestionType.decimal,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: currentQ.text,
-                          hintText: currentQ.hint,
-                          border: const OutlineInputBorder(),
-                        ),
-                        onChanged: (val) {
-                          _storeAnswer(currentQ.id, val);
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          _goToNextPage();
-                        },
-                        child: const Text('Suivant'),
-                      ),
-                    ] else if (currentQ.type == QuestionType.date) ...[
-                      TextFormField(
-                        controller: _controllers[currentQ.id],
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: currentQ.text,
-                          hintText: currentQ.hint ?? 'JJ/MM/AAAA',
-                          border: const OutlineInputBorder(),
-                          suffixIcon: const Icon(Icons.calendar_today),
-                        ),
-                        onTap: () async {
-                          DateTime now = DateTime.now();
-                          final DateTime? picked = await showDatePicker(
-                            context: context,
-                            initialDate: now,
-                            firstDate: DateTime(1900),
-                            lastDate: now,
-                            locale: const Locale('fr', 'FR'),
-                          );
-                          if (picked != null) {
-                            final formatted =
-                                '${picked.day.toString().padLeft(2, '0')}/'
-                                '${picked.month.toString().padLeft(2, '0')}/'
-                                '${picked.year}';
-                            _controllers[currentQ.id]!.text = formatted;
-                            _storeAnswer(currentQ.id, formatted);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          _goToNextPage();
-                        },
-                        child: const Text('Suivant'),
-                      ),
-                    ],
-                  ],
-
-                  const Spacer(),
-                ],
-              ),
-            );
-          }
-
-          // Récapitulatif Quiz 3
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Récapitulatif Quiz 3',
-                    style:
-                    TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final String randomTip =
-                    _quizManager.getRandomTip(_quizId);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Conseil :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          randomTip,
-                          style: const TextStyle(
-                              fontSize: 16, fontStyle: FontStyle.italic),
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    // On peut choisir d’afficher i31 ou i32 selon le profil. Ici, on prend i31 en exemple.
-                    final Infographic? info =
-                    _quizManager.getInfographicById(_quizId, 'i31');
-                    if (info == null) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Infographie : ${info.title}',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Image.asset(info.assetPath),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final String dailyChallenge =
-                    _quizManager.getDailyChallenge(_quizId);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Défi "1er jour clean" :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          dailyChallenge,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-
-                  Builder(builder: (_) {
-                    final Badge? badge =
-                    _quizManager.awardBadge(_quizId, 'b31');
-                    if (badge == null) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Nouveau badge :',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Image.asset(badge.assetPath, height: 48),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Text(
-                                badge.title,
-                                style: const TextStyle(fontSize: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  }),
                 ],
               ),
             ),
