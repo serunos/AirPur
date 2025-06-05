@@ -20,7 +20,7 @@ class AppDrawer extends StatelessWidget {
               padding: const EdgeInsets.all(16.0),
               child: CircleAvatar(
                 radius: 32,
-                backgroundImage: AssetImage('assets/logo.png'),
+                backgroundImage: AssetImage('assets/images/user.png'),
               ),
             ),
             // Menu Items
@@ -57,39 +57,15 @@ class AppDrawer extends StatelessWidget {
               selected: selectedIndex == 3,
             ),
             Spacer(),
-            // Tips & Tricks card
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Card(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.0)),
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Tips & Tricks', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 8),
-                      Text('Head on over to our website to get the latest tips & tricks!'),
-                      SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          // TODO: ouvrir lien externe
-                        },
-                        icon: Icon(Icons.open_in_new),
-                        label: Text('Learn More'),
-                      )
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            
             // User name
             ListTile(
-              leading: Icon(Icons.account_circle),
-              title: Text('Utilisateur'),
-            )
+              leading: CircleAvatar(
+                radius: 24, // optionnel : pour ajuster la taille de l’avatar
+                backgroundImage: AssetImage('assets/images/user.png'),
+              ),
+              title: Text('Sacha'),
+            ),
           ],
         ),
       ),

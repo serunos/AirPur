@@ -114,12 +114,24 @@ class QuizManager {
     return content.tips.first;
   }
 
-  /// Récupère la liste de badges acquis pour le quiz [quizId].
-  /// Si l’ID n’existe pas, retourne une liste vide (ne jamais retourner null).
+  /// Récupère la liste de badges disponibles pour le quiz [quizId].
+  /// Si l’ID n’existe pas, retourne une liste vide.
   List<Badge> getBadges(String quizId) {
     final content = allQuizzes[quizId];
     if (content == null) return <Badge>[];
     return content.badges;
+  }
+
+  /// Retourne un Badge précis pour le quiz [quizId], identifié par [badgeId].
+  /// Si le quiz ou le badge n’existent pas, retourne null.
+  Badge? getBadge(String quizId, String badgeId) {
+    final content = allQuizzes[quizId];
+    if (content == null) return null;
+    try {
+      return content.badges.firstWhere((b) => b.id == badgeId);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Recherche une infographie par [infographicId] au sein du quiz [quizId].
@@ -150,14 +162,6 @@ class QuizManager {
     }
     content.challenges.shuffle();
     return content.challenges.first;
-  }
-
-  /// Retourne la liste des badges disponibles pour le quiz [quizId].
-  /// Si l’ID n’existe pas, retourne une liste vide.
-  List<Badge> getAllBadges(String quizId) {
-    final content = allQuizzes[quizId];
-    if (content == null) return [];
-    return List.unmodifiable(content.badges);
   }
 
   /// Attribue un badge ([badgeId]) à l’utilisateur pour le quiz [quizId].
