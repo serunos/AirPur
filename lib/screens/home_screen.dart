@@ -9,6 +9,7 @@ import '../widgets/app_drawer.dart';
 import 'quiz_screen.dart';
 //import 'statistique_screen.dart'; // Nouvel écran pour "Statistiques"
 import 'chatbot_screen.dart';
+import 'tictactoe_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -24,12 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static final List<Widget> _pages = <Widget>[
     
     //const JeuScreen(),      index 0
-    const Center(
-      child: Text(
-        'Placeholder - Jeu',
-        style: TextStyle(fontSize: 24),
-      ),
-    ),
+    const TicTacToeScreen(),
     
     QuizSelectionScreen(), // index 1
     
